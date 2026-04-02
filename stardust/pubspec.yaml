@@ -1,0 +1,55 @@
+name: stardust
+description: "Stardust - приложение для знакомств"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.8
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
+  flutter_card_swiper: ^7.0.1
+  cached_network_image: ^3.4.1
+  shared_preferences: ^2.3.5
+  go_router: ^14.8.1
+  flutter_animate: ^4.5.2
+
+  # Firebase
+  firebase_core: ^3.12.1
+  firebase_auth: ^5.5.2
+  cloud_firestore: ^5.6.6
+  firebase_storage: ^12.4.4
+  firebase_messaging: ^15.2.4
+  firebase_analytics: ^11.4.4
+  
+  # Yandex Cloud (S3 compatible) - используем HTTP для прямых запросов
+  # minio: ^8.0.0  # раскомментировать если нужен S3 клиент
+  
+  # HTTP & Crypto
+  http: ^1.4.0
+  crypto: ^3.0.6
+  path: ^1.9.0
+
+  # Image picker
+  image_picker: ^1.1.2
+
+  # Geolocation
+  geolocator: ^13.0.2
+  geocoding: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/stardust_icon.png
+    - assets/icon_1.jpg
+    - assets/icon_2.jpg
+

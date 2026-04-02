@@ -1,0 +1,68 @@
+{
+  "project_info": {
+    "project_number": "1038196524463",
+    "firebase_url": "https://yepo-10685.firebaseio.com",
+    "project_id": "yepo-10685",
+    "storage_bucket": "yepo-10685.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1038196524463:android:c9150f1226feed02885b5a",
+        "android_client_info": {
+          "package_name": "com.daren.messenger"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAf7ojGRtkZ76hwmnBsNnbC5njgOYrf9_I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1038196524463:android:f623d373b34403c6885b5a",
+        "android_client_info": {
+          "package_name": "com.mug Yepo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAf7ojGRtkZ76hwmnBsNnbC5njgOYrf9_I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1038196524463:android:0e7b2f1234567890abcdef",
+        "android_client_info": {
+          "package_name": "com.stardust.stardust"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAf7ojGRtkZ76hwmnBsNnbC5njgOYrf9_I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
