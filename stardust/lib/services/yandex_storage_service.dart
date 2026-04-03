@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
@@ -26,11 +27,14 @@ class YandexStorageService {
   }) async {
     final uri = Uri.parse('$endpoint/$bucket/$objectName');
     
+    // Read file and compute SHA256 hash
+    final file = File(filePath);
+    final fileBytes = await file.readAsBytes();
+    final payloadHash = sha256.convert(fileBytes).toString();
+    
     final date = DateTime.now().toUtc();
     final dateStamp = '${date.year}${_pad(date.month)}${_pad(date.day)}';
     final amzDate = '${dateStamp}T${_pad(date.hour)}${_pad(date.minute)}${_pad(date.second)}Z';
-    
-    final payloadHash = 'UNSIGNED-PAYLOAD';
     
     final headers = {
       'Host': uri.host,
@@ -50,10 +54,14 @@ class YandexStorageService {
     
     headers['Authorization'] = 'AWS4-HMAC-SHA256 '
         'Credential=$accessKey/$dateStamp/$region/s3/aws4_request, '
-        'SignedHeaders=host;x-amz-content-sha256;x-amz-date, '
+        'SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date, '
         'Signature=$signature';
     
-    final response = await http.put(uri, headers: headers);
+    final response = await http.put(
+      uri,
+      headers: headers,
+      body: fileBytes,
+    );
     
     if (response.statusCode == 200 || response.statusCode == 201) {
       return '$endpoint/$bucket/$objectName';

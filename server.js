@@ -1,9 +1,60 @@
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { URL } = require('url');
 
 const PORT = 3000;
-const STATIC_DIR = 'stardust-app';
+const STATIC_DIR = '.';
+
+// Прокси для изображений с Yandex Cloud Storage
+function proxyImage(targetUrl, res) {
+    const parsedUrl = new URL(targetUrl);
+    const options = {
+        hostname: parsedUrl.hostname,
+        port: 443,
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: 'GET',
+        headers: {
+            'User-Agent': 'Stardust-App/1.0'
+        }
+    };
+
+    const proxyReq = https.request(options, (proxyRes) => {
+        // Проверяем статус
+        if (proxyRes.statusCode !== 200 && proxyRes.statusCode !== 304) {
+            res.writeHead(proxyRes.statusCode || 502, {
+                'Access-Control-Allow-Origin': '*'
+            });
+            res.end();
+            return;
+        }
+
+        // Передаём заголовки с CORS
+        const headers = {
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=31536000',
+        };
+
+        // Копируем тип контента
+        if (proxyRes.headers['content-type']) {
+            headers['Content-Type'] = proxyRes.headers['content-type'];
+        }
+
+        res.writeHead(proxyRes.statusCode, headers);
+
+        // Прокидываем данные
+        proxyRes.pipe(res, { end: true });
+    });
+
+    proxyReq.on('error', (err) => {
+        console.error('Proxy error:', err.message);
+        res.writeHead(502, { 'Access-Control-Allow-Origin': '*' });
+        res.end('Proxy error');
+    });
+
+    proxyReq.end();
+}
 
 const mimeTypes = {
     '.html': 'text/html',
@@ -28,6 +79,24 @@ const mimeTypes = {
 
 const server = http.createServer((req, res) => {
     console.log(`${req.method} ${req.url}`);
+
+    // Обработка прокси изображений /proxy-image?url=...
+    if (req.url.startsWith('/proxy-image?url=')) {
+        try {
+            const urlParam = new URL(req.url, `http://localhost:${PORT}`).searchParams.get('url');
+            if (urlParam) {
+                const decodedUrl = decodeURIComponent(urlParam);
+                console.log('Proxying image:', decodedUrl);
+                proxyImage(decodedUrl, res);
+                return;
+            }
+        } catch (e) {
+            console.error('Proxy error:', e);
+        }
+        res.writeHead(400, { 'Access-Control-Allow-Origin': '*' });
+        res.end('Bad request');
+        return;
+    }
 
     let filePath = path.join(__dirname, STATIC_DIR, req.url === '/' ? 'index.html' : req.url);
     

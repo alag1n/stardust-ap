@@ -11,6 +11,7 @@ import 'package:stardust/services/discovery_service.dart';
 import 'package:stardust/services/likes_service.dart';
 import 'package:stardust/services/auth_service.dart';
 import 'package:stardust/services/report_service.dart';
+import 'package:stardust/utils/image_proxy.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -521,13 +522,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSinglePhotoCard(UserModel profile, List<String> interests) {
+    final photoUrl = ImageProxy.getProxyUrl(profile.photoUrl);
+    
     return Stack(
       fit: StackFit.expand,
       children: [
         // Фото
-        profile.photoUrl != null
+        photoUrl != null
             ? Image.network(
-                profile.photoUrl!,
+                photoUrl,
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => _buildPlaceholderPhoto(),
               )
@@ -562,19 +565,22 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildCarouselCard(UserModel profile, List<String> allPhotos, List<String> interests) {
     final PageController pageController = PageController();
     
+    // Convert to proxy URLs
+    final proxyPhotos = allPhotos.map((url) => ImageProxy.getProxyUrl(url) ?? url).toList();
+    
     return Stack(
       fit: StackFit.expand,
       children: [
         // Карусель фото
         PageView.builder(
           controller: pageController,
-          itemCount: allPhotos.length,
+          itemCount: proxyPhotos.length,
           itemBuilder: (context, index) {
             return Stack(
               fit: StackFit.expand,
               children: [
                 Image.network(
-                  allPhotos[index],
+                  proxyPhotos[index],
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => _buildPlaceholderPhoto(),
                 ),
@@ -585,7 +591,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   right: 0,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(allPhotos.length, (i) {
+                    children: List.generate(proxyPhotos.length, (i) {
                       return Container(
                         width: i == index ? 24 : 8,
                         height: 8,

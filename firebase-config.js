@@ -1,5 +1,4 @@
 // Конфигурация Firebase для веба
-console.log('Loading firebase-config.js');
 const firebaseConfig = {
   apiKey: "AIzaSyAf7ojGRtkZ76hwmnBsNnbC5njgOYrf9_I",
   authDomain: "yepo-10685.firebaseapp.com",

@@ -11,7 +11,7 @@ while ($listener.IsListening) {
     $path = $request.Url.LocalPath
     if ($path -eq '/') { $path = '/index.html' }
     
-    $filePath = Join-Path "stardust-app" $path.TrimStart('/')
+    $filePath = Join-Path "." $path.TrimStart('/')
     
     if (Test-Path $filePath -PathType Leaf) {
         $content = Get-Content $filePath -Raw -Encoding UTF8

@@ -18,6 +18,10 @@ val localProperties = Properties().apply {
 fun localProp(key: String): String = localProperties.getProperty(key) ?: ""
 
 android {
+    buildFeatures {
+        buildConfig = true
+    }
+    
     namespace = "com.stardust.stardust"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion

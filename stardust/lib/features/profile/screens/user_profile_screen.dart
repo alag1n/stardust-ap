@@ -10,6 +10,7 @@ import 'package:stardust/services/auth_service.dart';
 import 'package:stardust/services/likes_service.dart';
 import 'package:stardust/services/block_service.dart';
 import 'package:stardust/services/report_service.dart';
+import 'package:stardust/utils/image_proxy.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final String userId;
@@ -440,20 +441,23 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       ...?(_user?.photos),
     ];
     
-    if (allPhotos.isEmpty) {
+    // Convert to proxy URLs
+    final proxyPhotos = allPhotos.map((url) => ImageProxy.getProxyUrl(url) ?? url).toList();
+    
+    if (proxyPhotos.isEmpty) {
       return AspectRatio(
         aspectRatio: 3 / 4,
         child: _buildPlaceholder(),
       );
     }
     
-    if (allPhotos.length == 1) {
+    if (proxyPhotos.length == 1) {
       return AspectRatio(
         aspectRatio: 3 / 4,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Image.network(allPhotos[0], fit: BoxFit.cover, errorBuilder: (_, __, ___) => _buildPlaceholder()),
+            Image.network(proxyPhotos[0], fit: BoxFit.cover, errorBuilder: (_, __, ___) => _buildPlaceholder()),
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -475,12 +479,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       child: Stack(
         children: [
           PageView.builder(
-            itemCount: allPhotos.length,
+            itemCount: proxyPhotos.length,
             itemBuilder: (context, index) {
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(allPhotos[index], fit: BoxFit.cover, errorBuilder: (_, __, ___) => _buildPlaceholder()),
+                  Image.network(proxyPhotos[index], fit: BoxFit.cover, errorBuilder: (_, __, ___) => _buildPlaceholder()),
                   // Индикаторы
                   Positioned(
                     top: MediaQuery.of(context).padding.top + 60,
@@ -488,7 +492,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     right: 0,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(allPhotos.length, (i) => Container(
+                      children: List.generate(proxyPhotos.length, (i) => Container(
                         width: i == index ? 24 : 8,
                         height: 8,
                         margin: const EdgeInsets.symmetric(horizontal: 2),

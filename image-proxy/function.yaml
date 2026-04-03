@@ -1,0 +1,7 @@
+function:
+  name: image-proxy
+  runtime: python312
+  entrypoint: handler
+  memory: 128
+  execution_timeout: 10
+  http: true
