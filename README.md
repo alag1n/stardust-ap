@@ -1,0 +1,1 @@
+cd D:\Stardust; git init; git add stardust/ vercel.json firestore.rules .gitignore README.md; git commit -m "Initial commit"; git branch -M main; git remote add origin https://github.com/alag1n/stardust-ap.git; git push -u origin main

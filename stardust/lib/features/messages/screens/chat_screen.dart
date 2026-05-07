@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
@@ -50,23 +51,34 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _initChat() async {
     try {
       final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-      if (currentUserId == null) return;
-
-      String conversationId = widget.conversationId;
-      
-      // Если передан userId, получаем или создаем conversation
-      if (widget.userId != null) {
-        conversationId = await _messagesService.getOrCreateConversation(
-          currentUserId,
-          widget.userId!,
-        );
-        _otherUser = await _authService.getUserData(widget.userId!);
-        
-        // Получаем статус онлайн
-        if (_otherUser != null) {
-          _lastSeen = _otherUser!.lastActive;
-          _isOnline = _isUserOnline(_lastSeen);
+      if (currentUserId == null) {
+        print('❌ No user authenticated');
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Ошибка: пользователь не авторизован')),
+          );
         }
+        return;
+      }
+
+      // Формируем conversationId из отсортированных ID
+      // widget.userId может быть null если не передан в URL
+      final otherUserId = widget.userId ?? widget.conversationId;
+      final ids = [currentUserId, otherUserId]..sort();
+      final conversationId = ids.join('-');
+      print('📝 Conversation ID: $conversationId');
+      
+      // Получаем данные пользователя
+      _otherUser = await _authService.getUserData(otherUserId);
+      if (_otherUser == null) {
+        print('❌ User data not found for: $otherUserId');
+      }
+      
+      // Получаем статус онлайн
+      if (_otherUser != null) {
+        _lastSeen = _otherUser!.lastActive;
+        _isOnline = _isUserOnline(_lastSeen);
       }
       
       setState(() {
@@ -74,32 +86,56 @@ class _ChatScreenState extends State<ChatScreen> {
         _isLoading = false;
       });
 
-      // Подписка на сообщения
-      _messagesService.getMessages(conversationId).listen((msgs) {
-        if (mounted) {
-          setState(() {
-            _messages = msgs;
-          });
-          // Прокрутка к низу при новом сообщении
-          Future.delayed(const Duration(milliseconds: 100), () {
-            if (_scrollController.hasClients) {
-              _scrollController.animateTo(
-                _scrollController.position.maxScrollExtent,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-              );
-            }
-          });
-        }
-      });
+      print('🔔 Subscribing to messages for: $conversationId');
+      
+      // Подписка на сообщения с обработкой ошибок
+      _messagesService.getMessages(conversationId).listen(
+        (msgs) {
+          if (mounted) {
+            setState(() {
+              _messages = msgs;
+            });
+            // Прокрутка к низу при новом сообщении
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (_scrollController.hasClients) {
+                _scrollController.animateTo(
+                  _scrollController.position.maxScrollExtent,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
+                );
+              }
+            });
+          }
+        },
+        onError: (error) {
+          print('❌ Error listening to messages: $error');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Ошибка загрузки сообщений: $error')),
+            );
+          }
+        },
+      );
 
       // Отмечаем сообщения как доставленные
-      await _messagesService.markAsDelivered(conversationId, currentUserId);
+      try {
+        await _messagesService.markAsDelivered(conversationId, currentUserId);
+        print('✅ Messages marked as delivered');
+      } catch (e) {
+        print('⚠️ Error marking as delivered: $e');
+      }
       
       // Отмечаем как прочитанные
-      await _messagesService.markAsRead(conversationId, currentUserId);
+      try {
+        await _messagesService.markAsRead(conversationId, currentUserId);
+        print('✅ Messages marked as read');
+      } catch (e) {
+        print('⚠️ Error marking as read: $e');
+      }
       
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ Error in _initChat: $e');
+      print(stackTrace);
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -232,16 +268,7 @@ class _ChatScreenState extends State<ChatScreen> {
           CircleAvatar(
             radius: 20,
             backgroundColor: AppColors.surfaceLight,
-            backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-            child: photoUrl == null
-                ? Text(
-                    displayName[0].toUpperCase(),
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  )
-                : null,
+            child: _buildUserAvatar(_otherUser, displayName),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -324,6 +351,77 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isUserOnline(DateTime? lastActive) {
     if (lastActive == null) return false;
     return DateTime.now().difference(lastActive).inMinutes < 5;
+  }
+
+  Widget _buildUserAvatar(UserModel? user, String displayName) {
+    // Сначала проверяем photoUrl, затем берём первое фото из массива photos
+    String? photoUrl = user?.photoUrl;
+    if (photoUrl == null || photoUrl.isEmpty) {
+      if (user?.photos != null && user!.photos!.isNotEmpty) {
+        photoUrl = user.photos!.first;
+      }
+    }
+    
+    print('🖼️ Chat Avatar photoUrl: ${photoUrl?.substring(0, 50) ?? 'null'}');
+    
+    if (photoUrl == null || photoUrl.isEmpty) {
+      return Text(
+        displayName[0].toUpperCase(),
+        style: const TextStyle(
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.bold,
+        ),
+      );
+    }
+    
+    // Проверка на base64
+    if (photoUrl.startsWith('data:image')) {
+      try {
+        final base64Part = photoUrl.split(',').last;
+        final bytes = base64Decode(base64Part);
+        return ClipOval(
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            width: 40,
+            height: 40,
+            errorBuilder: (_, __, ___) => Text(
+              displayName[0].toUpperCase(),
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        );
+      } catch (e) {
+        print('❌ Error decoding base64: $e');
+        return Text(
+          displayName[0].toUpperCase(),
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+        );
+      }
+    }
+    
+    // Обычная URL
+    return ClipOval(
+      child: Image.network(
+        photoUrl,
+        fit: BoxFit.cover,
+        width: 40,
+        height: 40,
+        errorBuilder: (_, __, ___) => Text(
+          displayName[0].toUpperCase(),
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
   }
 
   void _showDeleteDialog({required bool forBoth}) {

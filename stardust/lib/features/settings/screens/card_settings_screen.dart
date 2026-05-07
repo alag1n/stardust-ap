@@ -15,7 +15,6 @@ class _CardSettingsScreenState extends State<CardSettingsScreen> {
   bool _showDistance = true;
   bool _showOnlineStatus = true;
   bool _showLastActive = true;
-  bool _makeProfileInvisible = false;
 
   @override
   Widget build(BuildContext context) {
@@ -47,13 +46,6 @@ class _CardSettingsScreenState extends State<CardSettingsScreen> {
                         _buildSwitch('Показывать расстояние', _showDistance, (v) => setState(() => _showDistance = v)),
                         _buildSwitch('Показывать статус онлайн', _showOnlineStatus, (v) => setState(() => _showOnlineStatus = v)),
                         _buildSwitch('Показывать последнюю активность', _showLastActive, (v) => setState(() => _showLastActive = v)),
-                        const SizedBox(height: 24),
-                        _buildSwitch('Сделать профиль невидимым', _makeProfileInvisible, (v) => setState(() => _makeProfileInvisible = v)),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Ваш профиль не будет показываться в ленте, но вы сможете им пользоваться',
-                          style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-                        ),
                       ],
                     ),
                   ),

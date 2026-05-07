@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../theme/app_theme.dart';
 
 class CosmicButton extends StatelessWidget {
@@ -83,7 +84,7 @@ class CosmicButton extends StatelessWidget {
   }
 }
 
-class CosmicIconButton extends StatelessWidget {
+class CosmicIconButton extends StatefulWidget {
   final IconData icon;
   final VoidCallback onPressed;
   final Color? color;
@@ -102,38 +103,87 @@ class CosmicIconButton extends StatelessWidget {
   });
 
   @override
+  State<CosmicIconButton> createState() => _CosmicIconButtonState();
+}
+
+class _CosmicIconButtonState extends State<CosmicIconButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _glowAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: 1500.ms,
+      vsync: this,
+    )..repeat(reverse: true);
+    
+    _glowAnimation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: backgroundColor ?? AppColors.surface,
-        shape: BoxShape.circle,
-        border: Border.all(color: AppColors.surfaceLight),
-        boxShadow: hasShadow
-            ? [
+    final glowColor = widget.color ?? AppColors.textPrimary;
+    final glowAmount = 0.2 + (_glowAnimation.value * 0.3);
+    final blurAmount = 10 + (_glowAnimation.value * 15);
+    
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          width: widget.size,
+          height: widget.size,
+          decoration: BoxDecoration(
+            color: widget.backgroundColor ?? AppColors.surface,
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.surfaceLight, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: glowColor.withValues(alpha: glowAmount),
+                blurRadius: blurAmount,
+                spreadRadius: _glowAnimation.value * 3,
+              ),
+              if (widget.hasShadow)
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.3),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
-              ]
-            : null,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(size / 2),
-          child: Center(
-            child: Icon(
-              icon,
-              color: color ?? AppColors.textPrimary,
-              size: size * 0.45,
+            ],
+          ),
+          child: Transform.scale(
+            scale: _scaleAnimation.value,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: widget.onPressed,
+                borderRadius: BorderRadius.circular(widget.size / 2),
+                child: Center(
+                  child: Icon(
+                    widget.icon,
+                    color: widget.color ?? AppColors.textPrimary,
+                    size: widget.size * 0.45,
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

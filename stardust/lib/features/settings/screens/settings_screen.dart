@@ -3,8 +3,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:stardust/core/theme/app_theme.dart';
 import 'package:stardust/core/widgets/star_background.dart';
-import 'package:stardust/features/settings/screens/notification_settings_screen.dart';
-import 'package:stardust/features/settings/screens/privacy_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -46,48 +44,26 @@ class SettingsScreen extends StatelessWidget {
                         const SizedBox(height: 24),
                         _buildSectionTitle('Приложение'),
                         _buildSettingsTile(
-                          icon: Icons.tune,
-                          title: 'Предпочтения поиска',
-                          subtitle: 'Пол, возраст, расстояние',
-                          onTap: () => context.push('/search-preferences'),
+                          icon: Icons.notifications_outlined,
+                          title: 'Уведомления',
+                          subtitle: 'Push-уведомления, email',
+                          onTap: () => context.push('/notifications'),
                           index: 2,
                         ),
-                        _buildSettingsTile(
-                          icon: Icons.visibility_outlined,
-                          title: 'Настройка карточки',
-                          subtitle: 'Что видят другие',
-                          onTap: () => context.push('/card-settings'),
-                          index: 3,
-                        ),
+                        const SizedBox(height: 24),
                         _buildSettingsTile(
                           icon: Icons.notifications_outlined,
                           title: 'Уведомления',
                           subtitle: 'Push-уведомления, email',
                           onTap: () => context.push('/notifications'),
-                          index: 4,
-                        ),
-                        const SizedBox(height: 24),
-                        _buildSectionTitle('Безопасность'),
-                        _buildSettingsTile(
-                          icon: Icons.privacy_tip_outlined,
-                          title: 'Приватность',
-                          subtitle: 'Кто видит ваш профиль',
-                          onTap: () => context.push('/privacy'),
-                          index: 5,
+                          index: 3,
                         ),
                         _buildSettingsTile(
                           icon: Icons.lock_outline,
-                          title: 'Изменить пароль',
-                          subtitle: 'Обезопасить аккаунт',
-                          onTap: () => _showChangePasswordDialog(context),
-                          index: 6,
-                        ),
-                        _buildSettingsTile(
-                          icon: Icons.login_outlined,
-                          title: 'Вход через соцсети',
-                          subtitle: 'Google, Apple, Facebook',
-                          onTap: () => _showSocialLoginInfo(context),
-                          index: 7,
+                          title: 'Приватность и безопасность',
+                          subtitle: 'Кто видит ваш профиль',
+                          onTap: () => context.push('/privacy'),
+                          index: 4,
                         ),
                         const SizedBox(height: 24),
                         _buildSectionTitle('О приложении'),
@@ -96,28 +72,21 @@ class SettingsScreen extends StatelessWidget {
                           title: 'Помощь',
                           subtitle: 'FAQ и поддержка',
                           onTap: () => context.push('/about'),
-                          index: 8,
+                          index: 3,
                         ),
                         _buildSettingsTile(
                           icon: Icons.description_outlined,
                           title: 'Правила',
                           subtitle: 'Правила площадки',
                           onTap: () => context.push('/rules'),
-                          index: 9,
-                        ),
-                        _buildSettingsTile(
-                          icon: Icons.policy_outlined,
-                          title: 'Политика конфиденциальности',
-                          subtitle: 'Как мы обрабатываем данные',
-                          onTap: () => context.push('/privacy'),
-                          index: 10,
+                          index: 4,
                         ),
                         _buildSettingsTile(
                           icon: Icons.info_outline,
                           title: 'О приложении',
                           subtitle: 'Версия 1.0.0',
                           onTap: () => context.push('/about'),
-                          index: 11,
+                          index: 5,
                         ),
                         const SizedBox(height: 24),
                         // Кнопка выхода
@@ -206,123 +175,6 @@ class SettingsScreen extends StatelessWidget {
           Text(text, style: const TextStyle(color: AppColors.textPrimary)),
         ],
       ),
-    );
-  }
-
-  void _showChangePasswordDialog(BuildContext context) {
-    final emailController = TextEditingController();
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Изменение пароля', style: TextStyle(color: AppColors.textPrimary)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Введите email, указанный при регистрации. Мы отправим вам ссылку для сброса пароля.',
-              style: TextStyle(color: AppColors.textMuted, fontSize: 14),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: emailController,
-              decoration: const InputDecoration(
-                hintText: 'Ваш email',
-                prefixIcon: Icon(Icons.email_outlined),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            onPressed: () {
-              // Здесь будет логика отправки письма для сброса пароля
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Ссылка для сброса пароля отправлена на email'),
-                  backgroundColor: AppColors.success,
-                ),
-              );
-            },
-            child: const Text('Отправить'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSocialLoginInfo(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.textMuted,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Вход через соцсети',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Скоро вы сможете входить в приложение через Google, Apple и Facebook.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildSocialButton(Icons.g_mobiledata, 'Google'),
-                _buildSocialButton(Icons.apple, 'Apple'),
-                _buildSocialButton(Icons.facebook, 'Facebook'),
-              ],
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSocialButton(IconData icon, String label) {
-    return Column(
-      children: [
-        Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: AppColors.surfaceLight,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Icon(icon, color: AppColors.textPrimary, size: 28),
-        ),
-        const SizedBox(height: 8),
-        Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
-      ],
     );
   }
 

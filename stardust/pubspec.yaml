@@ -53,3 +53,11 @@ flutter:
     - assets/icon_1.jpg
     - assets/icon_2.jpg
 
+  fonts:
+    - family: MaterialIcons
+      fonts:
+        - asset: assets/fonts/MaterialIcons-Regular.otf
+    - family: CupertinoIcons
+      fonts:
+        - asset: assets/packages/cupertino_icons/assets/CupertinoIcons.ttf
+

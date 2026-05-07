@@ -1,0 +1,45 @@
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+pubspec.lock
+.build/
+*.apk
+*.aab
+*.ipa
+*.app
+
+# Build outputs
+build/
+stardust/build/
+stardust/.dart_tool/
+stardust/.flutter-plugins
+stardust/.flutter-plugins-dependencies
+stardust/.packages
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Firebase
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Environment
+.env
+.env.local
+firebase.json
+.stardust/
+
+# Logs
+*.log
+flutter_*.png

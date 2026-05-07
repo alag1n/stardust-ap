@@ -1,0 +1,12 @@
+{
+  "buildCommand": "cd stardust && flutter build web --release",
+  "outputDirectory": "stardust/build/web",
+  "devCommand": "cd stardust && flutter run -d web-server",
+  "framework": "custom",
+  "rewrites": [
+    {
+      "source": "/:path*",
+      "destination": "/index.html"
+    }
+  ]
+}

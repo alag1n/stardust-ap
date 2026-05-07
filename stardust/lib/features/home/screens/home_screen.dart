@@ -1,5 +1,5 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -21,14 +21,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final CardSwiperController _cardController = CardSwiperController();
   final DiscoveryService _discoveryService = DiscoveryService();
   final LikesService _likesService = LikesService();
   final AuthService _authService = AuthService();
   
   List<UserModel> _profiles = [];
+  int _currentIndex = 0;
   Set<String> _likedUserIds = {};
-  Set<String> _superLikedUserIds = {}; // ID пользователей, которым отправлен Super Like
+  Set<String> _superLikedUserIds = {};
   bool _isLoading = true;
   bool _isSwiping = false;
 
@@ -46,7 +46,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _cardController.dispose();
     super.dispose();
   }
 
@@ -88,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
         userLatitude: userLat,
         userLongitude: userLng,
       );
-
+      
       if (mounted) {
         setState(() {
           _profiles = users;
@@ -105,81 +104,97 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<bool> _onSwipe(
-    int previousIndex,
-    int? currentIndex,
-    CardSwiperDirection direction,
-  ) async {
-    if (_isSwiping || previousIndex >= _profiles.length) return false;
+  Future<void> _likeUser() async {
+    if (_isSwiping || _currentIndex >= _profiles.length) return;
     
     setState(() => _isSwiping = true);
     
-    final profile = _profiles[previousIndex];
+    final profile = _profiles[_currentIndex];
     final userId = FirebaseAuth.instance.currentUser?.uid;
     
     if (userId == null) {
       setState(() => _isSwiping = false);
-      return false;
+      return;
     }
 
-    if (direction == CardSwiperDirection.right) {
-      // Лайк
-      try {
-        final isMatch = await _likesService.likeUser(
-          fromUserId: userId,
-          toUserId: profile.id,
-        );
-        
-        _likedUserIds.add(profile.id);
-        
-        if (isMatch && mounted) {
-          _showMatchDialog(profile);
-        }
-      } catch (e) {
-        // Ошибка при лайке
+    try {
+      final isMatch = await _likesService.likeUser(
+        fromUserId: userId,
+        toUserId: profile.id,
+      );
+      
+      _likedUserIds.add(profile.id);
+      
+      if (isMatch && mounted) {
+        _showMatchDialog(profile);
       }
-    } else if (direction == CardSwiperDirection.left) {
-      // Дизлайк — просто пропускаем
-    } else if (direction == CardSwiperDirection.top) {
-      // Суперлайк - только для Premium
-      try {
-        final isMatch = await _likesService.likeUser(
-          fromUserId: userId,
-          toUserId: profile.id,
-          isSuperLike: true,
-        );
-        
-        _likedUserIds.add(profile.id);
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Суперлайк отправлен! ⭐'),
-              backgroundColor: AppColors.accent,
-            ),
-          );
-          _showMatchDialog(profile);
-        }
-      } catch (e) {
-        if (mounted) {
-          String message = 'Ошибка отправки';
-          if (e.toString().contains('Превышен лимит')) {
-            message = 'Лимит Super Like исчерпан (3 в день)';
-          } else if (e.toString().contains('недоступно')) {
-            message = 'Super Like доступен для Premium';
-          }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(message),
-              backgroundColor: AppColors.warning,
-            ),
-          );
-        }
-      }
+    } catch (e) {
+      // Ошибка при лайке
     }
-
+    
+    setState(() => _currentIndex++);
     setState(() => _isSwiping = false);
-    return true;
+  }
+
+  Future<void> _superLikeUser() async {
+    if (_isSwiping || _currentIndex >= _profiles.length) return;
+    
+    setState(() => _isSwiping = true);
+    
+    final profile = _profiles[_currentIndex];
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    
+    if (userId == null) {
+      setState(() => _isSwiping = false);
+      return;
+    }
+
+    try {
+      final isMatch = await _likesService.likeUser(
+        fromUserId: userId,
+        toUserId: profile.id,
+        isSuperLike: true,
+      );
+      
+      _likedUserIds.add(profile.id);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Суперлайк отправлен! ⭐'),
+            backgroundColor: AppColors.accent,
+          ),
+        );
+        _showMatchDialog(profile);
+      }
+    } catch (e) {
+      if (mounted) {
+        String message = 'Ошибка отправки';
+        if (e.toString().contains('Превышен лимит')) {
+          message = 'Лимит Super Like исчерпан (3 в день)';
+        } else if (e.toString().contains('недоступно')) {
+          message = 'Super Like доступен для Premium';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+    }
+    
+    setState(() => _currentIndex++);
+    setState(() => _isSwiping = false);
+  }
+
+  Future<void> _dislikeUser() async {
+    if (_isSwiping || _currentIndex >= _profiles.length) return;
+    
+    setState(() => _isSwiping = true);
+    
+    setState(() => _currentIndex++);
+    setState(() => _isSwiping = false);
   }
 
   void _showMatchDialog(UserModel profile) {
@@ -293,7 +308,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ? const CircularProgressIndicator()
                           : _profiles.isEmpty
                               ? _buildEmptyState()
-                              : _buildSwiper(),
+                              : _buildCardContainer(),
                     ),
                   ),
                 ),
@@ -357,31 +372,21 @@ class _HomeScreenState extends State<HomeScreen> {
     ).animate().fadeIn().slideY(begin: -0.2);
   }
 
-  Widget _buildSwiper() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: CardSwiper(
-        controller: _cardController,
-        cardsCount: _profiles.length,
-        numberOfCardsDisplayed: _profiles.length > 2 ? 3 : _profiles.length,
-        backCardOffset: const Offset(0, 40),
-        padding: EdgeInsets.zero,
-        onSwipe: _onSwipe,
-        onUndo: _onUndo,
-        cardBuilder: (context, index, percentThresholdX, percentThresholdY) {
-          if (index >= _profiles.length) return const SizedBox();
-          final profile = _profiles[index];
-          final isSuperLiked = _superLikedUserIds.contains(profile.id);
-          return _buildProfileCard(profile, isSuperLiked: isSuperLiked);
-        },
-      ),
-    );
+  Widget _buildCardContainer() {
+    if (_currentIndex >= _profiles.length) {
+      return _buildEmptyState();
+    }
+    
+    final profile = _profiles[_currentIndex];
+    final isSuperLiked = _superLikedUserIds.contains(profile.id);
+    
+    return _buildProfileCard(profile, isSuperLiked: isSuperLiked);
   }
 
   Widget _buildProfileCard(UserModel profile, {bool isSuperLiked = false}) {
     final interests = profile.interestedIn?.split(', ') ?? [];
     final allPhotos = [
-      if (profile.photoUrl != null) profile.photoUrl!,
+      if (profile.photoUrl != null && profile.photoUrl!.isNotEmpty) profile.photoUrl!,
       ...profile.photos,
     ];
     
@@ -393,18 +398,14 @@ class _HomeScreenState extends State<HomeScreen> {
         : AppColors.premiumPurple;
     
     return Container(
+      constraints: const BoxConstraints(maxHeight: 650),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: glowColor.withValues(alpha: 0.4),
-            blurRadius: 30,
-            spreadRadius: 2,
-          ),
-          BoxShadow(
-            color: glowColor.withValues(alpha: 0.2),
-            blurRadius: 60,
-            spreadRadius: 5,
+            color: glowColor.withValues(alpha: 0.3),
+            blurRadius: 20,
+            spreadRadius: 1,
           ),
         ],
       ),
@@ -414,7 +415,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             // Контент карточки
             Positioned.fill(
-              child: allPhotos.length > 1
+              child: allPhotos.isNotEmpty
                   ? _buildCarouselCard(profile, allPhotos, interests)
                   : _buildSinglePhotoCard(profile, interests),
             ),
@@ -435,25 +436,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-    ).animate(onPlay: (controller) {
-      controller.repeat(reverse: true);
-    }).custom(
-      duration: 2000.ms,
-      builder: (context, value, child) {
-        return Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: glowColor.withValues(alpha: 0.3 + (value * 0.3)),
-                blurRadius: 30 + (value * 20),
-                spreadRadius: 2 + (value * 3),
-              ),
-            ],
-          ),
-          child: child,
-        );
-      },
     );
   }
 
@@ -522,19 +504,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSinglePhotoCard(UserModel profile, List<String> interests) {
-    final photoUrl = ImageProxy.getProxyUrl(profile.photoUrl);
+    final allPhotos = [
+      if (profile.photoUrl != null && profile.photoUrl!.isNotEmpty) profile.photoUrl!,
+      ...profile.photos,
+    ];
     
     return Stack(
       fit: StackFit.expand,
       children: [
         // Фото
-        photoUrl != null
-            ? Image.network(
-                photoUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _buildPlaceholderPhoto(),
-              )
-            : _buildPlaceholderPhoto(),
+        _buildPhoto(allPhotos.isNotEmpty ? allPhotos.first : null),
         // Градиент
         Container(
           decoration: BoxDecoration(
@@ -562,28 +541,48 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildPhoto(String? photoUrl) {
+    if (photoUrl == null || photoUrl.isEmpty) {
+      return _buildPlaceholderPhoto();
+    }
+    
+    // Проверка на base64
+    if (photoUrl.startsWith('data:image')) {
+      try {
+        final base64Part = photoUrl.split(',').last;
+        final bytes = base64Decode(base64Part);
+        return Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _buildPlaceholderPhoto(),
+        );
+      } catch (e) {
+        return _buildPlaceholderPhoto();
+      }
+    }
+    
+    // Обычная URL
+    final proxyUrl = ImageProxy.getProxyUrl(photoUrl);
+    return Image.network(
+      proxyUrl ?? photoUrl,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => _buildPlaceholderPhoto(),
+    );
+  }
+
   Widget _buildCarouselCard(UserModel profile, List<String> allPhotos, List<String> interests) {
-    final PageController pageController = PageController();
-    
-    // Convert to proxy URLs
-    final proxyPhotos = allPhotos.map((url) => ImageProxy.getProxyUrl(url) ?? url).toList();
-    
     return Stack(
       fit: StackFit.expand,
       children: [
         // Карусель фото
         PageView.builder(
-          controller: pageController,
-          itemCount: proxyPhotos.length,
+          scrollDirection: Axis.horizontal,
+          itemCount: allPhotos.length,
           itemBuilder: (context, index) {
             return Stack(
               fit: StackFit.expand,
               children: [
-                Image.network(
-                  proxyPhotos[index],
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _buildPlaceholderPhoto(),
-                ),
+                _buildPhoto(allPhotos[index]),
                 // Индикаторы страниц
                 Positioned(
                   top: 60,
@@ -591,7 +590,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   right: 0,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(proxyPhotos.length, (i) {
+                    children: List.generate(allPhotos.length, (i) {
                       return Container(
                         width: i == index ? 24 : 8,
                         height: 8,
@@ -878,8 +877,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       onPressed: () async {
                         Navigator.pop(dialogContext);
                         await _submitReport(profile.id, selectedReason);
-                        // Свайп влево после жалобы
-                        _cardController.swipe(CardSwiperDirection.left);
+                        // Переход к следующей карточке
+                        setState(() => _currentIndex++);
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.error,
@@ -935,21 +934,21 @@ class _HomeScreenState extends State<HomeScreen> {
           // Дизлайк
           CosmicIconButton(
             icon: Icons.close,
-            onPressed: () => _cardController.swipe(CardSwiperDirection.left),
+            onPressed: _dislikeUser,
             color: AppColors.error,
             size: 60,
           ),
           // Суперлайк
           CosmicIconButton(
             icon: Icons.star,
-            onPressed: () => _cardController.swipe(CardSwiperDirection.top),
+            onPressed: _superLikeUser,
             color: AppColors.accent,
             size: 50,
           ),
           // Лайк
           CosmicIconButton(
             icon: Icons.favorite,
-            onPressed: () => _cardController.swipe(CardSwiperDirection.right),
+            onPressed: _likeUser,
             color: AppColors.success,
             size: 60,
           ),
@@ -1136,12 +1135,5 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  bool _onUndo(
-    int? previousIndex,
-    int currentIndex,
-    CardSwiperDirection direction,
-  ) {
-    return true;
-  }
 }
+

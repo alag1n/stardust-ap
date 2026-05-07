@@ -43,52 +43,72 @@ class LikesService {
     required String toUserId,
     bool isSuperLike = false,
   }) async {
-    // Если Super Like - проверяем лимит
-    if (isSuperLike) {
-      final canSuperLike = await canSendSuperLike(fromUserId);
-      if (!canSuperLike) {
-        throw Exception('Превышен лимит Super Like или недоступно');
+    print('💖 Creating like: from=$fromUserId to=$toUserId, superLike=$isSuperLike');
+    
+    try {
+      // Если Super Like - проверяем лимит
+      if (isSuperLike) {
+        final canSuperLike = await canSendSuperLike(fromUserId);
+        if (!canSuperLike) {
+          throw Exception('Превышен лимит Super Like или недоступно');
+        }
       }
-    }
-    
-    // Check if the other user already liked us
-    final existingLike = await _firestore
-        .collection('likes')
-        .where('fromUserId', isEqualTo: toUserId)
-        .where('toUserId', isEqualTo: fromUserId)
-        .get();
-    
-    final isMatch = existingLike.docs.isNotEmpty;
-    
-    // Create like
-    final likeData = {
-      'fromUserId': fromUserId,
-      'toUserId': toUserId,
-      'isMatch': isMatch,
-      'isSuperLike': isSuperLike,
-      'createdAt': DateTime.now().toIso8601String(),
-    };
-    
-    await _firestore.collection('likes').add(likeData);
-    
-    // Если Super Like - увеличиваем счётчик
-    if (isSuperLike) {
-      await _firestore.collection('users').doc(fromUserId).update({
-        'superLikesToday': FieldValue.increment(1),
+      
+      print('✅ SuperLike check passed');
+      
+      // Check if the other user already liked us
+      final existingLikes = await _firestore
+          .collection('likes')
+          .get();
+      
+      final isMatch = existingLikes.docs.any((doc) {
+        final data = doc.data();
+        return data['fromUserId'] == toUserId && data['toUserId'] == fromUserId;
       });
+      
+      print('🔍 Found ${existingLikes.docs.length} total likes, isMatch: $isMatch');
+      
+      // Create like
+      final likeData = {
+        'fromUserId': fromUserId,
+        'toUserId': toUserId,
+        'isMatch': isMatch,
+        'isSuperLike': isSuperLike,
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+      
+      print('📝 Saving like to Firestore...');
+      final likeDoc = await _firestore.collection('likes').add(likeData);
+      print('✅ Like created in Firestore with ID: ${likeDoc.id}');
+      
+      // Если Super Like - увеличиваем счётчик
+      if (isSuperLike) {
+        await _firestore.collection('users').doc(fromUserId).update({
+          'superLikesToday': FieldValue.increment(1),
+        });
+        print('✅ SuperLike counter updated');
+      }
+      
+      // If it's a match or superlike, create conversation
+      if (isMatch || isSuperLike) {
+        print('🤝 Creating match conversation...');
+        await _createMatchConversation(fromUserId, toUserId);
+        print('✅ Match conversation created');
+      }
+      
+      // Update likes count
+      print('📈 Updating likesCount for user $toUserId...');
+      await _firestore.collection('users').doc(toUserId).update({
+        'likesCount': FieldValue.increment(1),
+      });
+      print('✅ Updated likesCount for user $toUserId');
+      
+      return isMatch || isSuperLike;
+    } catch (e, stackTrace) {
+      print('❌ Error in likeUser: $e');
+      print(stackTrace);
+      rethrow;
     }
-    
-    // If it's a match or superlike, create conversation
-    if (isMatch || isSuperLike) {
-      await _createMatchConversation(fromUserId, toUserId);
-    }
-    
-    // Update likes count
-    await _firestore.collection('users').doc(toUserId).update({
-      'likesCount': FieldValue.increment(1),
-    });
-    
-    return isMatch || isSuperLike;
   }
   
   /// Unlike a user
@@ -109,52 +129,69 @@ class LikesService {
   
   /// Get users who liked us
   Future<List<String>> getLikedByUsers(String userId) async {
-    final likes = await _firestore
-        .collection('likes')
-        .where('toUserId', isEqualTo: userId)
-        .get();
+    print('🔍 getLikedByUsers called for: $userId');
     
-    return likes.docs.map((doc) => doc.data()['fromUserId'] as String).toList();
+    // Получаем ВСЕ лайки и фильтруем на клиенте (без orderBy чтобы не было проблем с индексами)
+    final likes = await _firestore.collection('likes').get();
+    
+    final result = likes.docs
+        .where((doc) => doc.data()['toUserId'] == userId)
+        .map((doc) => doc.data()['fromUserId'] as String)
+        .toList();
+    
+    print('📊 getLikedByUsers returned ${result.length} users: $result');
+    return result;
   }
   
   /// Get our likes
   Future<List<String>> getOurLikes(String userId) async {
-    final likes = await _firestore
-        .collection('likes')
-        .where('fromUserId', isEqualTo: userId)
-        .get();
+    print('🔍 getOurLikes called for: $userId');
     
-    return likes.docs.map((doc) => doc.data()['toUserId'] as String).toList();
+    // Получаем ВСЕ лайки и фильтруем на клиенте
+    final likes = await _firestore.collection('likes').get();
+    
+    final result = likes.docs
+        .where((doc) => doc.data()['fromUserId'] == userId)
+        .map((doc) => doc.data()['toUserId'] as String)
+        .toList();
+    
+    print('📊 getOurLikes returned ${result.length} users: $result');
+    return result;
   }
   
   /// Get users we've Super Liked
   Future<List<String>> getSuperLikes(String userId) async {
-    final likes = await _firestore
-        .collection('likes')
-        .where('fromUserId', isEqualTo: userId)
-        .where('isSuperLike', isEqualTo: true)
-        .get();
+    print('🔍 getSuperLikes called for: $userId');
     
-    return likes.docs.map((doc) => doc.data()['toUserId'] as String).toList();
+    // Получаем ВСЕ лайки и фильтруем на клиенте
+    final likes = await _firestore.collection('likes').get();
+    
+    final result = likes.docs
+        .where((doc) => 
+            doc.data()['fromUserId'] == userId && 
+            doc.data()['isSuperLike'] == true)
+        .map((doc) => doc.data()['toUserId'] as String)
+        .toList();
+    
+    print('📊 getSuperLikes returned ${result.length} users: $result');
+    return result;
   }
   
   /// Get matches
   Future<List<MatchModel>> getMatches(String userId) async {
-    final matches = await _firestore
-        .collection('likes')
-        .where('fromUserId', isEqualTo: userId)
-        .where('isMatch', isEqualTo: true)
-        .get();
+    // Получаем ВСЕ лайки и фильтруем на клиенте
+    final likes = await _firestore.collection('likes').get();
     
-    final matches2 = await _firestore
-        .collection('likes')
-        .where('toUserId', isEqualTo: userId)
-        .where('isMatch', isEqualTo: true)
-        .get();
+    // Фильтруем: где isMatch=true и userId участвует
+    final matchLikes = likes.docs.where((doc) {
+      final data = doc.data();
+      return data['isMatch'] == true &&
+             (data['fromUserId'] == userId || data['toUserId'] == userId);
+    }).toList();
     
-    final allMatches = [...matches.docs, ...matches2.docs];
+    print('🔥 getMatches found ${matchLikes.length} matches for user $userId');
     
-    return allMatches.map((doc) {
+    return matchLikes.map((doc) {
       final data = doc.data();
       final otherUserId = data['fromUserId'] == userId 
           ? data['toUserId'] 
@@ -164,51 +201,59 @@ class LikesService {
         id: doc.id,
         userId1: userId,
         userId2: otherUserId,
-        matchedAt: DateTime.parse(data['createdAt']),
+        matchedAt: DateTime.now(),
       );
     }).toList();
   }
   
   /// Check if user is liked
   Future<bool> isLiked(String fromUserId, String toUserId) async {
-    final like = await _firestore
-        .collection('likes')
-        .where('fromUserId', isEqualTo: fromUserId)
-        .where('toUserId', isEqualTo: toUserId)
-        .get();
+    // Получаем ВСЕ лайки и фильтруем на клиенте
+    final likes = await _firestore.collection('likes').get();
     
-    return like.docs.isNotEmpty;
+    final result = likes.docs.any((doc) => 
+        doc.data()['fromUserId'] == fromUserId && 
+        doc.data()['toUserId'] == toUserId);
+    
+    return result;
   }
   
   /// Check if it's a match
   Future<bool> isMatch(String userId1, String userId2) async {
-    final like = await _firestore
-        .collection('likes')
-        .where('fromUserId', isEqualTo: userId1)
-        .where('toUserId', isEqualTo: userId2)
-        .where('isMatch', isEqualTo: true)
-        .get();
+    // Получаем ВСЕ лайки и фильтруем на клиенте
+    final likes = await _firestore.collection('likes').get();
     
-    return like.docs.isNotEmpty;
+    final result = likes.docs.any((doc) {
+      final data = doc.data();
+      return (data['fromUserId'] == userId1 && data['toUserId'] == userId2 && data['isMatch'] == true) ||
+             (data['fromUserId'] == userId2 && data['toUserId'] == userId1 && data['isMatch'] == true);
+    });
+    
+    return result;
   }
   
   /// Create conversation for match
   Future<void> _createMatchConversation(String userId1, String userId2) async {
-    final conversationData = {
-      'participantIds': [userId1, userId2],
-      'createdAt': DateTime.now().toIso8601String(),
-      'isGroup': false,
-      'unreadCount': 0,
-    };
+    // Проверка на существование match через client-side filtering
+    final matches = await _firestore.collection('matches').get();
     
-    await _firestore.collection('conversations').add(conversationData);
+    final existingMatch = matches.docs.any((doc) {
+      final data = doc.data();
+      final userIds = data['userIds'] as List<dynamic>;
+      return userIds.contains(userId1) && userIds.contains(userId2);
+    });
     
-    // Update match counts
-    await _firestore.collection('users').doc(userId1).update({
-      'matchesCount': FieldValue.increment(1),
+    if (existingMatch) {
+      print('🤝 Match conversation already exists');
+      return;
+    }
+    
+    // Создаем match
+    await _firestore.collection('matches').add({
+      'userIds': [userId1, userId2],
+      'createdAt': FieldValue.serverTimestamp(),
     });
-    await _firestore.collection('users').doc(userId2).update({
-      'matchesCount': FieldValue.increment(1),
-    });
+    
+    print('✅ Match conversation created');
   }
 }

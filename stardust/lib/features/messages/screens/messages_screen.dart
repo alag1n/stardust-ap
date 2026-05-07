@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
@@ -38,49 +39,104 @@ class _MessagesScreenState extends State<MessagesScreen> {
     
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId == null) return;
+      if (userId == null) {
+        print('❌ No user authenticated');
+        setState(() => _isLoading = false);
+        return;
+      }
 
-      // Получаем мэтчи
-      final matches = await _likesService.getMatches(userId);
+      print('📱 Loading chats for user: $userId');
+      
+      // Получаем ВСЕ лайки
+      print('🔍 Fetching all likes from Firestore...');
+      final allLikes = await _firestore.collection('likes').get();
+      print('🔥 Total likes in DB: ${allLikes.docs.length}');
+      
+      // Фильтруем взаимные лайки (где оба лайкнули друг друга)
+      final matchedUserIds = <String>{};
+      
+      for (final likeDoc in allLikes.docs) {
+        final likeData = likeDoc.data();
+        final fromUserId = likeData['fromUserId'] as String;
+        final toUserId = likeData['toUserId'] as String;
+        
+        // Если это лайк ОТ текущего пользователя
+        if (fromUserId == userId) {
+          // Проверяем есть ли обратный лайк
+          final hasBackLike = allLikes.docs.any((doc) {
+            final data = doc.data();
+            return data['fromUserId'] == toUserId && 
+                   data['toUserId'] == userId;
+          });
+          if (hasBackLike) {
+            matchedUserIds.add(toUserId);
+            print('✅ Mutual match found with: $toUserId');
+          }
+        }
+      }
+      
+      print('🔥 Found ${matchedUserIds.length} mutual matches');
       
       final chatsData = <Map<String, dynamic>>[];
       
-      for (final match in matches) {
-        // ID другого пользователя
-        final otherUserId = match.userId1 == userId ? match.userId2 : match.userId1;
+      for (final otherUserId in matchedUserIds) {
+        print('🔹 Processing match: $otherUserId');
         
         // Получаем данные пользователя
         final user = await _authService.getUserData(otherUserId);
-        if (user == null) continue;
+        if (user == null) {
+          print('❌ User data not found for: $otherUserId');
+          continue;
+        }
+        print('✅ User found: ${user.name}');
         
-        // Получаем последнее сообщение
-        final messages = await _firestore
-            .collection('messages')
-            .where('conversationId', isEqualTo: match.id)
-            .orderBy('createdAt', descending: true)
-            .limit(1)
-            .get();
+        // conversationId = отсортированные ID пользователей через '-'
+        final ids = [userId, otherUserId]..sort();
+        final conversationId = ids.join('-');
+        print('📝 Conversation ID: $conversationId');
         
-        String lastMessage = '';
-        String lastTime = '';
+        // Получаем последнее сообщение с try-catch
+        String lastMessage = 'Новый мэтч! Напишите первым 👋';
+        String lastTime = 'Сейчас';
         int unreadCount = 0;
         
-        if (messages.docs.isNotEmpty) {
-          final msgData = messages.docs.first.data();
-          lastMessage = msgData['content'] ?? '';
-          if (msgData['createdAt'] != null) {
-            final msgTime = DateTime.parse(msgData['createdAt']);
-            lastTime = _formatTime(msgTime);
+        try {
+          final messages = await _firestore
+              .collection('messages')
+              .where('conversationId', isEqualTo: conversationId)
+              .get();
+          
+          // Находим последнее сообщение
+          if (messages.docs.isNotEmpty) {
+            // Сортируем на клиенте
+            final sorted = messages.docs.toList()
+              ..sort((a, b) {
+                final aTime = DateTime.tryParse(a.data()['createdAt'] ?? '') ?? DateTime(0);
+                final bTime = DateTime.tryParse(b.data()['createdAt'] ?? '') ?? DateTime(0);
+                return bTime.compareTo(aTime);
+              });
+            
+            final msgData = sorted.first.data();
+            lastMessage = msgData['content'] ?? 'Новый мэтч! Напишите первым 👋';
+            if (msgData['createdAt'] != null) {
+              try {
+                final msgTime = DateTime.parse(msgData['createdAt']);
+                lastTime = _formatTime(msgTime);
+              } catch (e) {
+                print('⚠️ Error parsing time: $e');
+              }
+            }
+            unreadCount = (msgData['isRead'] == false && msgData['senderId'] != userId) 
+                ? 1 
+                : 0;
           }
-          unreadCount = msgData['isRead'] == false && msgData['senderId'] != userId 
-              ? 1 
-              : 0;
-        } else {
-          lastMessage = 'Новый мэтч! Напишите первым 👋';
+        } catch (e) {
+          print('⚠️ Error loading messages: $e');
+          // Продолжаем без сообщений
         }
         
         chatsData.add({
-          'id': match.id,
+          'id': conversationId,
           'userId': otherUserId,
           'user': user,
           'lastMessage': lastMessage,
@@ -101,8 +157,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
           _chats = chatsData;
           _isLoading = false;
         });
+        print('✅ Chats loaded: ${_chats.length}');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ Error loading chats: $e');
+      print(stackTrace);
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -122,6 +181,53 @@ class _MessagesScreenState extends State<MessagesScreen> {
     if (diff.inDays < 7) return '${diff.inDays} дн';
     
     return '${time.day}.${time.month}';
+  }
+
+  Widget _buildUserAvatar(UserModel user) {
+    // Сначала проверяем photoUrl, затем берём первое фото из массива photos
+    String? photoUrl = user.photoUrl;
+    if (photoUrl == null || photoUrl.isEmpty) {
+      if (user.photos != null && user.photos!.isNotEmpty) {
+        photoUrl = user.photos!.first;
+      }
+    }
+    
+    print('🖼️ Avatar photoUrl: ${photoUrl?.substring(0, 50) ?? 'null'}');
+    
+    if (photoUrl == null || photoUrl.isEmpty) {
+      return const Icon(Icons.person, color: Colors.white, size: 28);
+    }
+    
+    // Проверка на base64
+    if (photoUrl.startsWith('data:image')) {
+      try {
+        final base64Part = photoUrl.split(',').last;
+        final bytes = base64Decode(base64Part);
+        return ClipOval(
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            width: 56,
+            height: 56,
+            errorBuilder: (_, __, ___) => const Icon(Icons.person, color: Colors.white, size: 28),
+          ),
+        );
+      } catch (e) {
+        print('❌ Error decoding base64: $e');
+        return const Icon(Icons.person, color: Colors.white, size: 28);
+      }
+    }
+    
+    // Обычная URL
+    return ClipOval(
+      child: Image.network(
+        photoUrl,
+        fit: BoxFit.cover,
+        width: 56,
+        height: 56,
+        errorBuilder: (_, __, ___) => const Icon(Icons.person, color: Colors.white, size: 28),
+      ),
+    );
   }
 
   @override
@@ -283,20 +389,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
                         decoration: BoxDecoration(
                           gradient: AppColors.primaryGradient,
                           shape: BoxShape.circle,
-                          image: user.photoUrl != null
-                              ? DecorationImage(
-                                  image: NetworkImage(user.photoUrl!),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
                         ),
-                        child: user.photoUrl == null
-                            ? const Icon(
-                                Icons.person,
-                                color: Colors.white,
-                                size: 28,
-                              )
-                            : null,
+                        child: _buildUserAvatar(user),
                       ),
                     ],
                   ),

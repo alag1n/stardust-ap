@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:stardust/core/theme/app_theme.dart';
 import 'package:stardust/core/widgets/star_background.dart';
 import 'package:stardust/services/auth_service.dart';
+import 'package:stardust/services/image_upload_service.dart';
 import 'package:stardust/models/user_model.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -16,10 +18,13 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _authService = AuthService();
+  final _imageService = ImageUploadService();
   UserModel? _user;
   bool _isLoading = true;
   bool _isVisible = true;
   bool _isTogglingVisibility = false;
+  bool _isUploadingPhoto = false;
+  List<String> _photos = [];
 
   @override
   void initState() {
@@ -35,6 +40,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() {
           _user = user;
           _isVisible = user?.isVisible ?? true;
+          _photos = user?.photos ?? [];
           _isLoading = false;
         });
       }
@@ -74,6 +80,123 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() => _isTogglingVisibility = false);
       }
     }
+  }
+
+  void _showAddPhotoOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: AppColors.primary),
+                title: const Text('Выбрать из галереи'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickPhoto(fromCamera: false);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: AppColors.primary),
+                title: const Text('Сделать фото'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickPhoto(fromCamera: true);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickPhoto({required bool fromCamera}) async {
+    if (_photos.length >= 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Максимум 6 фото')),
+      );
+      return;
+    }
+    
+    setState(() => _isUploadingPhoto = true);
+    
+    try {
+      final file = fromCamera 
+          ? await _imageService.pickFromCamera()
+          : await _imageService.pickFromGallery();
+      
+      if (file.isNotEmpty) {
+        final userId = FirebaseAuth.instance.currentUser?.uid;
+        if (userId != null) {
+          final url = await _imageService.uploadImage(
+            file: file[0],
+            userId: userId,
+            folder: 'photos',
+          );
+          
+          if (mounted) {
+            setState(() {
+              _photos.add(url);
+            });
+            
+            // Сохраняем фото в Firebase
+            await _authService.updateUserData(userId, {'photos': _photos});
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Фото добавлено')),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка загрузки: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingPhoto = false);
+      }
+    }
+  }
+
+  void _removePhoto(int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Удалить фото'),
+        content: const Text('Вы уверены?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              final userId = FirebaseAuth.instance.currentUser?.uid;
+              if (userId != null) {
+                setState(() {
+                  _photos.removeAt(index);
+                });
+                await _authService.updateUserData(userId, {'photos': _photos});
+              }
+            },
+            child: const Text('Удалить', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _logout() async {
@@ -216,18 +339,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ],
                 ),
-                child: Container(
-                  width: 114,
-                  height: 114,
-                  decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.person,
-                    size: 60,
-                    color: Colors.white,
-                  ),
+                child: ClipOval(
+                  child: _photos.isNotEmpty
+                      ? _buildMainPhoto(_photos.first)
+                      : Container(
+                          width: 114,
+                          height: 114,
+                          decoration: BoxDecoration(
+                            gradient: AppColors.primaryGradient,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.person,
+                            size: 60,
+                            color: Colors.white,
+                          ),
+                        ),
                 ),
               ),
               Positioned(
@@ -436,16 +563,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 12),
           SizedBox(
             height: 120,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: 4,
-              itemBuilder: (context, index) {
-                if (index == 3) {
-                  return _buildAddPhotoButton();
-                }
-                return _buildPhotoItem(index);
-              },
-            ),
+            child: _photos.isEmpty && _isUploadingPhoto
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                : ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _photos.length + 1,
+                    itemBuilder: (context, index) {
+                      if (index == _photos.length) {
+                        return _buildAddPhotoButton();
+                      }
+                      return _buildPhotoItem(index);
+                    },
+                  ),
           ),
         ],
       ),
@@ -453,61 +587,273 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildPhotoItem(int index) {
+    final photoUrl = _photos[index];
+    final isMainPhoto = index == 0; // Первое фото - главное
+    
+    return GestureDetector(
+      onTap: () => _showPhotoViewer(index),
+      child: Stack(
+        children: [
+          Container(
+            width: 100,
+            height: 120,
+            margin: const EdgeInsets.only(right: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              color: AppColors.surfaceLight,
+              border: isMainPhoto
+                  ? Border.all(color: AppColors.primary, width: 3)
+                  : null,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Stack(
+                children: [
+                  _buildPhotoImage(photoUrl),
+                  if (isMainPhoto)
+                    Positioned(
+                      top: 4,
+                      left: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.star, size: 12, color: Colors.white),
+                            SizedBox(width: 2),
+                            Text(
+                              'Главное',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: GestureDetector(
+              onTap: () => _showPhotoOptions(index),
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isMainPhoto ? Icons.star : Icons.more_vert,
+                  size: 14,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhotoImage(String photoUrl) {
+    return _buildMainPhoto(photoUrl);
+  }
+
+  Widget _buildMainPhoto(String photoUrl) {
+    // Проверка на base64
+    if (photoUrl.startsWith('data:image')) {
+      try {
+        final base64Part = photoUrl.split(',').last;
+        final bytes = base64Decode(base64Part);
+        return Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _buildPlaceholderAvatar(),
+        );
+      } catch (e) {
+        return _buildPlaceholderAvatar();
+      }
+    }
+    
+    // Обычная URL
+    return Image.network(
+      photoUrl,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => _buildPlaceholderAvatar(),
+    );
+  }
+
+  Widget _buildPlaceholderAvatar() {
     return Container(
-      width: 100,
-      height: 120,
-      margin: const EdgeInsets.only(right: 12),
+      width: 114,
+      height: 114,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.primary.withValues(alpha: 0.6 + index * 0.1),
-            AppColors.accent.withValues(alpha: 0.4 + index * 0.1),
-          ],
+        gradient: AppColors.primaryGradient,
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(
+        Icons.person,
+        size: 60,
+        color: Colors.white,
+      ),
+    );
+  }
+
+  void _showPhotoOptions(int index) {
+    final isMainPhoto = index == 0;
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!isMainPhoto)
+                ListTile(
+                  leading: const Icon(Icons.star, color: AppColors.primary),
+                  title: const Text('Сделать главным фото'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _setMainPhoto(index);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.remove_red_eye, color: AppColors.accent),
+                title: const Text('Просмотр'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showPhotoViewer(index);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Удалить'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _removePhoto(index);
+                },
+              ),
+            ],
+          ),
         ),
       ),
-      child: const Center(
-        child: Icon(
-          Icons.photo,
-          color: Colors.white54,
-          size: 40,
+    );
+  }
+
+  Future<void> _setMainPhoto(int index) async {
+    if (index == 0) return;
+    
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+    
+    setState(() {
+      final mainPhoto = _photos[index];
+      _photos.removeAt(index);
+      _photos.insert(0, mainPhoto);
+    });
+    
+    await _authService.updateUserData(userId, {'photos': _photos});
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Фото установлено как главное')),
+      );
+    }
+  }
+
+  void _showPhotoViewer(int index) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.black87,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Image.network(
+                _photos[index],
+                fit: BoxFit.contain,
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close, color: Colors.white),
+              ),
+            ),
+            Positioned(
+              bottom: 8,
+              left: 8,
+              child: TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _removePhoto(index);
+                },
+                icon: const Icon(Icons.delete, color: Colors.red),
+                label: const Text('Удалить', style: TextStyle(color: Colors.red)),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildAddPhotoButton() {
-    return Container(
-      width: 100,
-      height: 120,
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppColors.surfaceLight,
-          width: 2,
-          style: BorderStyle.solid,
+    return GestureDetector(
+      onTap: _isUploadingPhoto ? null : _showAddPhotoOptions,
+      child: Container(
+        width: 100,
+        height: 120,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: _photos.length >= 6 ? AppColors.surfaceLight : AppColors.primary,
+            width: 2,
+            style: BorderStyle.solid,
+          ),
         ),
-      ),
-      child: const Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.add_photo_alternate_outlined,
-            size: 32,
-            color: AppColors.textMuted,
-          ),
-          SizedBox(height: 4),
-          Text(
-            'Добавить',
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.textMuted,
-            ),
-          ),
-        ],
+        child: _isUploadingPhoto
+            ? const Center(
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _photos.length >= 6 ? Icons.lock : Icons.add_photo_alternate_outlined,
+                    size: 32,
+                    color: _photos.length >= 6 ? AppColors.textMuted : AppColors.primary,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _photos.length >= 6 ? 'Максимум' : 'Добавить',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _photos.length >= 6 ? AppColors.textMuted : AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }

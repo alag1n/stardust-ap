@@ -169,15 +169,15 @@ final GoRouter router = GoRouter(
     ),
     // Non-shell routes
     GoRoute(
-      path: '/chat/:conversationId',
+      path: '/chat/:otherUserId',
       builder: (context, state) {
-        final conversationId = state.pathParameters['conversationId']!;
+        final otherUserId = state.pathParameters['otherUserId']!;
         final userName = state.uri.queryParameters['name'] ?? 'Чат';
         final userId = state.uri.queryParameters['userId'];
         return ChatScreen(
-          conversationId: conversationId, 
+          conversationId: '', 
           userName: userName,
-          userId: userId,
+          userId: userId ?? otherUserId,
         );
       },
     ),

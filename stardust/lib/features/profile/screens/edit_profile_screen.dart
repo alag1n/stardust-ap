@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
@@ -6,7 +7,6 @@ import 'package:stardust/core/theme/app_theme.dart';
 import 'package:stardust/core/widgets/star_background.dart';
 import 'package:stardust/core/widgets/cosmic_button.dart';
 import 'package:stardust/services/auth_service.dart';
-import 'package:stardust/services/image_upload_service.dart';
 import 'package:stardust/services/location_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -19,7 +19,6 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _authService = AuthService();
-  final _imageService = ImageUploadService();
   final _locationService = LocationService();
   final _userId = FirebaseAuth.instance.currentUser?.uid;
   
@@ -30,7 +29,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   
   int _age = 25;
   bool _isLoading = false;
-  bool _isUploadingPhoto = false;
   bool _isUpdatingLocation = false;
   String? _photoUrl;
   List<String> _photos = [];
@@ -323,293 +321,49 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Center(
       child: Column(
         children: [
-          // Основное фото
-          GestureDetector(
-            onTap: _showPhotoOptions,
-            child: Stack(
-              children: [
-                Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: AppColors.primary,
-                      width: 3,
-                    ),
-                    image: _photoUrl != null
-                        ? DecorationImage(
-                            image: NetworkImage(_photoUrl!),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
-                  child: _photoUrl == null
-                      ? const Icon(
-                          Icons.person,
-                          size: 50,
-                          color: Colors.white,
+          // Основное фото - только отображение
+          Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppColors.primary,
+                width: 3,
+              ),
+              // Сначала проверяем photoUrl, затем берём первое фото из массива photos
+              image: (_photoUrl != null && _photoUrl!.isNotEmpty)
+                  ? DecorationImage(
+                      image: NetworkImage(_photoUrl!),
+                      fit: BoxFit.cover,
+                    )
+                  : (_photos.isNotEmpty
+                      ? DecorationImage(
+                          image: MemoryImage(base64Decode(_photos.first.split(',').last)),
+                          fit: BoxFit.cover,
                         )
-                      : null,
-                ),
-                if (_isUploadingPhoto)
-                  Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black45,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Center(
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      ),
-                    ),
-                  ),
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      gradient: AppColors.primaryGradient,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: AppColors.background,
-                        width: 2,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.camera_alt,
-                      size: 14,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
+                      : null),
             ),
+            child: (_photoUrl == null || _photoUrl!.isEmpty) && _photos.isEmpty
+                ? const Icon(
+                    Icons.person,
+                    size: 50,
+                    color: Colors.white,
+                  )
+                : null,
           ),
           const SizedBox(height: 8),
-          TextButton(
-            onPressed: _showPhotoOptions,
-            child: const Text('Изменить фото'),
+          Text(
+            'Фото добавьте в разделе "Фотогалерея"',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textMuted,
+            ),
           ),
-          // Дополнительные фото
-          if (_photos.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 60,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: _photos.length + 1,
-                itemBuilder: (context, index) {
-                  if (index == _photos.length) {
-                    // Кнопка добавления
-                    return GestureDetector(
-                      onTap: _addMorePhotos,
-                      child: Container(
-                        width: 50,
-                        height: 50,
-                        margin: const EdgeInsets.only(right: 8),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceLight,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: AppColors.primary,
-                            style: BorderStyle.solid,
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.add,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    );
-                  }
-                  
-                  return Stack(
-                    children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-                        margin: const EdgeInsets.only(right: 8),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          image: DecorationImage(
-                            image: NetworkImage(_photos[index]),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        right: 8,
-                        top: 0,
-                        child: GestureDetector(
-                          onTap: () => _removePhoto(index),
-                          child: Container(
-                            width: 18,
-                            height: 18,
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.close,
-                              size: 12,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-            if (_photos.length < 6)
-              TextButton(
-                onPressed: _addMorePhotos,
-                child: Text('Добавить ещё фото (${6 - _photos.length} осталось)'),
-              ),
-          ] else
-            TextButton(
-              onPressed: _addMorePhotos,
-              child: const Text('Добавить фото (до 6)'),
-            ),
         ],
       ),
     ).animate().fadeIn(delay: 100.ms);
-  }
-
-  void _showPhotoOptions() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.photo_library, color: AppColors.primary),
-                title: const Text('Выбрать из галереи'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickPhoto(fromCamera: false);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.camera_alt, color: AppColors.primary),
-                title: const Text('Сделать фото'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickPhoto(fromCamera: true);
-                },
-              ),
-              if (_photoUrl != null)
-                ListTile(
-                  leading: const Icon(Icons.delete, color: Colors.red),
-                  title: const Text('Удалить фото', style: TextStyle(color: Colors.red)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _removeMainPhoto();
-                  },
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickPhoto({required bool fromCamera}) async {
-    if (_userId == null) return;
-    
-    setState(() => _isUploadingPhoto = true);
-    
-    try {
-      final file = fromCamera 
-          ? await _imageService.pickFromCamera()
-          : await _imageService.pickFromGallery();
-      
-      if (file != null) {
-        final url = await _imageService.uploadToFirebase(
-          file: file,
-          userId: _userId!,
-          folder: 'avatars',
-        );
-        
-        if (mounted) {
-          setState(() => _photoUrl = url);
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка загрузки: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isUploadingPhoto = false);
-      }
-    }
-  }
-
-  void _removeMainPhoto() {
-    setState(() => _photoUrl = null);
-  }
-
-  Future<void> _addMorePhotos() async {
-    if (_userId == null || _photos.length >= 6) return;
-    
-    try {
-      final files = await _imageService.pickMultiple();
-      
-      if (files.isEmpty) return;
-      
-      setState(() => _isUploadingPhoto = true);
-      
-      final remaining = 6 - _photos.length;
-      final toUpload = files.take(remaining).toList();
-      
-      for (final file in toUpload) {
-        final url = await _imageService.uploadToFirebase(
-          file: file,
-          userId: _userId!,
-          folder: 'photos',
-        );
-        
-        _photos.add(url);
-      }
-      
-      if (mounted) {
-        setState(() {});
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка загрузки: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isUploadingPhoto = false);
-      }
-    }
-  }
-
-  void _removePhoto(int index) {
-    setState(() {
-      _photos.removeAt(index);
-    });
   }
 
   Widget _buildTextField({

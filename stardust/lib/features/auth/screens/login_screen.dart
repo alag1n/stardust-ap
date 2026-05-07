@@ -134,13 +134,22 @@ class _LoginScreenState extends State<LoginScreen> {
         children: [
           const StarBackground(),
           SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isDesktop = constraints.maxWidth > 768;
+                
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: isDesktop ? 440 : double.infinity,
+                      ),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
                     const SizedBox(height: 40),
                     // Логотип
                     Center(
@@ -320,9 +329,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ],
                     ).animate().fadeIn(delay: 1300.ms),
-                  ],
-                ),
-              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ],

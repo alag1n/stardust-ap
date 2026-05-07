@@ -102,13 +102,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
         children: [
           const StarBackground(),
           SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isDesktop = constraints.maxWidth > 768;
+                
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: isDesktop ? 440 : double.infinity,
+                      ),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
                     const SizedBox(height: 20),
                     // Кнопка назад
                     Align(
@@ -317,9 +326,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                       ],
                     ).animate().fadeIn(delay: 800.ms),
-                  ],
-                ),
-              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ],

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stardust/core/theme/app_theme.dart';
 import 'package:stardust/core/widgets/star_background.dart';
+import 'package:stardust/core/widgets/cosmic_button.dart';
 import 'package:stardust/models/user_model.dart';
 import 'package:stardust/services/likes_service.dart';
 import 'package:stardust/services/auth_service.dart';
@@ -32,6 +34,106 @@ class _LikesScreenState extends State<LikesScreen> {
     _loadLikes();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadLikes();
+  }
+
+  Future<void> _likeUser(UserModel user) async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    try {
+      final isMatch = await _likesService.likeUser(
+        fromUserId: userId,
+        toUserId: user.id,
+      );
+      
+      // Перезагружаем данные
+      await _loadLikes();
+      
+      if (isMatch && mounted) {
+        _showMatchDialog(user);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Лайк отправлен!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка: $e')),
+        );
+      }
+    }
+  }
+    
+  void _skipUser(UserModel user) {
+    // Просто ничего не делаем - можно потом лайкнуть
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${user.name} пропущен'),
+        backgroundColor: AppColors.surfaceLight,
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  void _showMatchDialog(UserModel user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.favorite,
+              color: AppColors.primary,
+              size: 60,
+            ).animate().scale(duration: 500.ms).then().shake(),
+            const SizedBox(height: 16),
+            const Text(
+              'Это мэтч! 💫',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Вы и ${user.name} лайкнули друг друга!',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 24),
+            CosmicButton(
+              text: 'Отправить сообщение',
+              onPressed: () {
+                Navigator.pop(context);
+                context.push('/chat/${user.id}?name=${user.name}');
+              },
+              width: double.infinity,
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Позже'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _loadLikes() async {
     setState(() => _isLoading = true);
     
@@ -39,8 +141,12 @@ class _LikesScreenState extends State<LikesScreen> {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) return;
 
+      print('🔍 Loading likes for user: $userId');
+      
       // Получаем список ID пользователей, которые нас лайкнули
       final likedByIds = await _likesService.getLikedByUsers(userId);
+      
+      print('📊 Found ${likedByIds.length} likes from users: $likedByIds');
       
       // Получаем данные этих пользователей
       final likedByUsers = <UserModel>[];
@@ -62,11 +168,15 @@ class _LikesScreenState extends State<LikesScreen> {
         final user = await _authService.getUserData(id);
         if (user != null) {
           likedByUsers.add(user);
+          print('✅ Added user: ${user.name}');
+        } else {
+          print('❌ User data not found for: $id');
         }
       }
 
       // Получаем наши лайки
       final ourLikeIds = await _likesService.getOurLikes(userId);
+      print('👍 Our likes: $ourLikeIds');
       final ourLikes = <UserModel>[];
       for (final id in ourLikeIds) {
         final user = await _authService.getUserData(id);
@@ -104,10 +214,13 @@ class _LikesScreenState extends State<LikesScreen> {
             
             return 0;
           });
+          print('📝 Final loaded ${_likedByUsers.length} users, ${mutualLikes.length} mutual');
           _isLoading = false;
         });
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ Error loading likes: $e');
+      print(stackTrace);
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -298,6 +411,50 @@ class _LikesScreenState extends State<LikesScreen> {
     );
   }
 
+  Widget _buildUserAvatar(UserModel user) {
+    // Сначала проверяем photoUrl, затем берём первое фото из массива photos
+    String? photoUrl = user.photoUrl;
+    if (photoUrl == null || photoUrl.isEmpty) {
+      if (user.photos != null && user.photos!.isNotEmpty) {
+        photoUrl = user.photos!.first;
+      }
+    }
+    
+    if (photoUrl == null || photoUrl.isEmpty) {
+      return const Icon(Icons.person, color: Colors.white, size: 30);
+    }
+    
+    // Проверка на base64
+    if (photoUrl.startsWith('data:image')) {
+      try {
+        final base64Part = photoUrl.split(',').last;
+        final bytes = base64Decode(base64Part);
+        return ClipOval(
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            width: 60,
+            height: 60,
+            errorBuilder: (_, __, ___) => const Icon(Icons.person, color: Colors.white, size: 30),
+          ),
+        );
+      } catch (e) {
+        return const Icon(Icons.person, color: Colors.white, size: 30);
+      }
+    }
+    
+    // Обычная URL
+    return ClipOval(
+      child: Image.network(
+        photoUrl,
+        fit: BoxFit.cover,
+        width: 60,
+        height: 60,
+        errorBuilder: (_, __, ___) => const Icon(Icons.person, color: Colors.white, size: 30),
+      ),
+    );
+  }
+
   Widget _buildLikeItem(BuildContext context, UserModel user, int index) {
     final isMutual = _isMutual(user.id);
     
@@ -328,20 +485,8 @@ class _LikesScreenState extends State<LikesScreen> {
                       decoration: BoxDecoration(
                         gradient: AppColors.primaryGradient,
                         shape: BoxShape.circle,
-                        image: user.photoUrl != null
-                            ? DecorationImage(
-                                image: NetworkImage(user.photoUrl!),
-                                fit: BoxFit.cover,
-                              )
-                            : null,
                       ),
-                      child: user.photoUrl == null
-                          ? const Icon(
-                              Icons.person,
-                              color: Colors.white,
-                              size: 30,
-                            )
-                          : null,
+                      child: _buildUserAvatar(user),
                     ),
                     if (isMutual)
                       Positioned(
@@ -460,9 +605,7 @@ class _LikesScreenState extends State<LikesScreen> {
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: IconButton(
-                          onPressed: () {
-                            // Пропустить - можно потом лайкнуть
-                          },
+                          onPressed: () => _skipUser(user),
                           icon: const Icon(
                             Icons.close,
                             color: AppColors.textMuted,
@@ -480,9 +623,7 @@ class _LikesScreenState extends State<LikesScreen> {
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: IconButton(
-                          onPressed: () {
-                            // Лайкнуть
-                          },
+                          onPressed: () => _likeUser(user),
                           icon: const Icon(
                             Icons.favorite,
                             color: Colors.white,
