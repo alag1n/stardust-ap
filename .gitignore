@@ -43,3 +43,9 @@ firebase.json
 # Logs
 *.log
 flutter_*.png
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
