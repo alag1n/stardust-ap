@@ -1,0 +1,18 @@
+{
+    "name": "stardust",
+    "short_name": "stardust",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#0175C2",
+    "theme_color": "#0175C2",
+    "description": "Stardust - космические знакомства",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icon.png",
+            "sizes": "any",
+            "type": "image/png"
+        }
+    ]
+}
